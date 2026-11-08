@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 import traceback
 from contextlib import asynccontextmanager
@@ -41,11 +42,13 @@ from utils.utils import validate_i18n
 
 redis = Redis(host=config.REDIS_HOST, password=config.REDIS_PASSWORD)
 session = create_telegram_session()
-bot = create_bot(config.TOKEN, session)
+bot = None if os.environ.get("PREVIEW_MODE") == "1" else create_bot(config.TOKEN, session)
 dp = Dispatcher(storage=RedisStorage(redis))
 
 
 async def _startup() -> None:
+    if os.environ.get("PREVIEW_MODE") == "1":
+        return
     await create_db_and_tables()
     await bot.set_webhook(
         url=config.WEBHOOK_URL,
@@ -95,6 +98,8 @@ async def _startup() -> None:
 
 async def _shutdown() -> None:
     logging.warning('Shutting down..')
+    if os.environ.get("PREVIEW_MODE") == "1":
+        return
     await bot.delete_webhook()
     await dp.storage.close()
     await bot.session.close()
@@ -128,6 +133,11 @@ admin.add_model_view(ReferralBonusAdmin)
 admin.add_model_view(ReviewAdmin)
 
 app.include_router(processing_router)
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 
 @app.post(config.WEBHOOK_PATH)
